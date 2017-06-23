@@ -66,6 +66,9 @@ type Handler interface {
 	//Authenticate(identity, username, password_or_response string) error
 	AuthUser(identity, username string) (password string, err error)
 
+	// called only if user was authorized
+	AuthSuccess()
+
 	// Sender is called after MAIL FROM
 	Sender(address string) error
 
@@ -106,7 +109,7 @@ func (s *Server) ServeSMTP(conn net.Conn, handler Handler) error {
 		//state: state_init,
 		handler: handler,
 	}
-	
+
 	// connection already encrypted (SMTPS)?
 	if _, ok := conn.(*tls.Conn); ok {
 	    sess.tls = true
@@ -292,7 +295,7 @@ func (s *session) authPlain(cred string) {
 	username := string(parts[1])
 	password := string(parts[2])
 	// ? check if username or password is empty
-	
+
 	// check credentials
 	expected, err := s.handler.AuthUser(identity, username)
 	if err != nil {
@@ -303,6 +306,8 @@ func (s *session) authPlain(cred string) {
     	s.conn.Reply("502 invalid credentials")
     	return
 	}
+
+	s.handler.AuthSuccess()
 	s.conn.Reply("235 OK, you are now authenticated")
 }
 
@@ -315,7 +320,7 @@ func (s *session) authLogin() {
 		return
 	}
 	username := string(data)
-	
+
 	// ask for password
 	s.conn.Reply("334 UGFzc3dvcmQ6") // "Password:" in Base64
 	data, err = s.readAuthResp()
@@ -335,15 +340,17 @@ func (s *session) authLogin() {
     	s.conn.Reply("502 invalid credentials")
     	return
 	}
+
+	s.handler.AuthSuccess()
 	s.conn.Reply("235 OK, you are now authenticated")
 }
 
 func (s *session) authCramMD5() {
-    
+
     // send challenge
     challenge := []byte(fmt.Sprintf("<%d-%d@%s>", rand.Int63(), time.Now().Unix(), s.server.Hostname))
     s.conn.Reply("334 " + base64.StdEncoding.EncodeToString(challenge))
-    
+
     // get response, should be challenge hashed with password
 	data, err := s.readAuthResp()
 	if err != nil {
@@ -351,14 +358,14 @@ func (s *session) authCramMD5() {
 		return
 	}
 	username, hashed := split1(string(data))
-    
+
     // lookup expected password
     expected, err := s.handler.AuthUser("", username)
 	if err != nil {
 		s.conn.ErrorReply(err)
 		return
 	}
-	
+
     // calculate expected response and compare
     d := hmac.New(md5.New, []byte(expected))
 	d.Write(challenge)
@@ -367,6 +374,8 @@ func (s *session) authCramMD5() {
     	s.conn.Reply("502 invalid credentials")
     	return
 	}
+
+	s.handler.AuthSuccess()
     s.conn.Reply("235 OK, you are now authenticated")
 }
 
@@ -378,7 +387,7 @@ func (s *session) readAuthResp() (data []byte, err error) {
 	if line == "*" {
 	    err = fmt.Errorf("501 Authentication cancelled")
 		return
-	} 
+	}
 	data, err = base64.StdEncoding.DecodeString(line)
 	if err != nil {
 	    err = fmt.Errorf("501 Invalid base64 encoding: %v", err)
