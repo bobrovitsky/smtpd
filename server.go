@@ -67,7 +67,7 @@ type Handler interface {
 	AuthUser(identity, username string) (password string, err error)
 
 	// called only if user was authorized
-	AuthSuccess()
+	AuthSuccess(username string)
 
 	// Sender is called after MAIL FROM
 	Sender(address string) error
@@ -307,7 +307,7 @@ func (s *session) authPlain(cred string) {
     	return
 	}
 
-	s.handler.AuthSuccess()
+	s.handler.AuthSuccess(username)
 	s.conn.Reply("235 OK, you are now authenticated")
 }
 
@@ -341,7 +341,7 @@ func (s *session) authLogin() {
     	return
 	}
 
-	s.handler.AuthSuccess()
+	s.handler.AuthSuccess(username)
 	s.conn.Reply("235 OK, you are now authenticated")
 }
 
@@ -375,7 +375,7 @@ func (s *session) authCramMD5() {
     	return
 	}
 
-	s.handler.AuthSuccess()
+	s.handler.AuthSuccess(username)
     s.conn.Reply("235 OK, you are now authenticated")
 }
 
